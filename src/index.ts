@@ -1,26 +1,77 @@
 import { fromHono } from "chanfana";
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
+import { SongLookup } from "./endpoints/songLookup";
+import { SongCreate } from "./endpoints/songCreate";
+import { SongDelete } from "./endpoints/songDelete";
+import { SongFetch } from "./endpoints/songFetch";
+import { SongList } from "./endpoints/songList";
+import { SongUpdate } from "./endpoints/songUpdate";
+import { FeatureCreate } from "./endpoints/featureCreate";
+import { FeatureDelete } from "./endpoints/featureDelete";
+import { FeatureFetch } from "./endpoints/featureFetch";
+import { FeatureList } from "./endpoints/featureList";
+import { FeatureUpdate } from "./endpoints/featureUpdate";
 import { TaskCreate } from "./endpoints/taskCreate";
 import { TaskDelete } from "./endpoints/taskDelete";
 import { TaskFetch } from "./endpoints/taskFetch";
 import { TaskList } from "./endpoints/taskList";
+import { Env } from "./types";
 
-// Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
 
-// Setup OpenAPI registry
+// Security middleware
+app.use("*", async (c, next) => {
+	// Exclude documentation from authentication
+	if (c.req.path === "/" || c.req.path === "/openapi.json") {
+		return next();
+	}
+
+	const method = c.req.method;
+	const path = c.req.path;
+
+	// Determine if this is an administrative action
+	const isWriteAction = (method === "POST" || method === "PUT" || method === "DELETE") && path !== "/lookup";
+
+	const requiredToken = isWriteAction ? c.env.ADMIN_KEY : c.env.API_KEY;
+
+	return bearerAuth({ token: requiredToken })(c, next);
+});
+
 const openapi = fromHono(app, {
 	docs_url: "/",
 });
 
-// Register OpenAPI endpoints
-openapi.get("/api/tasks", TaskList);
-openapi.post("/api/tasks", TaskCreate);
-openapi.get("/api/tasks/:taskSlug", TaskFetch);
-openapi.delete("/api/tasks/:taskSlug", TaskDelete);
+// Register Security Schemes for OpenAPI
+openapi.registry.registerComponent("securitySchemes", "APIKey", {
+	type: "http",
+	scheme: "bearer",
+	description: "General API Key for read-only access and lookup",
+});
 
-// You may also register routes for non OpenAPI directly on Hono
-// app.get('/test', (c) => c.text('Hono!'))
+openapi.registry.registerComponent("securitySchemes", "AdminKey", {
+	type: "http",
+	scheme: "bearer",
+	description: "Admin Key for create, update, and delete operations",
+});
 
-// Export the Hono app
+openapi.post("/lookup", SongLookup);
+
+openapi.get("/songs", SongList);
+openapi.post("/songs", SongCreate);
+openapi.get("/songs/:id", SongFetch);
+openapi.put("/songs/:id", SongUpdate);
+openapi.delete("/songs/:id", SongDelete);
+
+openapi.get("/features", FeatureList);
+openapi.post("/features", FeatureCreate);
+openapi.get("/features/:id", FeatureFetch);
+openapi.put("/features/:id", FeatureUpdate);
+openapi.delete("/features/:id", FeatureDelete);
+
+openapi.get("/tasks", TaskList);
+openapi.post("/tasks", TaskCreate);
+openapi.get("/tasks/:taskSlug", TaskFetch);
+openapi.delete("/tasks/:taskSlug", TaskDelete);
+
 export default app;

@@ -6,6 +6,7 @@ export class TaskList extends OpenAPIRoute {
 	schema = {
 		tags: ["Tasks"],
 		summary: "List Tasks",
+		security: [{ APIKey: [] }],
 		request: {
 			query: z.object({
 				page: z.number().default(0).describe("Page number"),

@@ -6,6 +6,7 @@ export class TaskDelete extends OpenAPIRoute {
 	schema = {
 		tags: ["Tasks"],
 		summary: "Delete a Task",
+		security: [{ AdminKey: [] }],
 		request: {
 			params: z.object({
 				taskSlug: z.string().describe("Task slug"),

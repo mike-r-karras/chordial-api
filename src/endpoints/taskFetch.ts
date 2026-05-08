@@ -6,6 +6,7 @@ export class TaskFetch extends OpenAPIRoute {
 	schema = {
 		tags: ["Tasks"],
 		summary: "Get a single Task by slug",
+		security: [{ APIKey: [] }],
 		request: {
 			params: z.object({
 				taskSlug: z.string().describe("Task slug"),
