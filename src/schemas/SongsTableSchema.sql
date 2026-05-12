@@ -1,8 +1,11 @@
 CREATE TABLE songs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  artist TEXT NOT NULL,
-  album TEXT,
-  year INTEGER,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    artist TEXT,
+    album TEXT,
+    year INTEGER,
+    file_path TEXT,
+    duration REAL,
+    sample_rate INTEGER,
+    UNIQUE(name, artist, album, year)
 );

@@ -1,12 +1,11 @@
 import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
-import { type AppContext, Feature } from "../types";
-import { hexToBytes, bytesToHex } from "../utils/hex";
+import { type AppContext, Fingerprint } from "../types";
 
-export class FeatureUpdate extends OpenAPIRoute {
+export class FingerprintUpdate extends OpenAPIRoute {
 	schema = {
-		tags: ["Features"],
-		summary: "Update a feature",
+		tags: ["Fingerprints"],
+		summary: "Update a fingerprint",
 		security: [{ AdminKey: [] }],
 		request: {
 			params: z.object({
@@ -15,25 +14,25 @@ export class FeatureUpdate extends OpenAPIRoute {
 			body: {
 				content: {
 					"application/json": {
-						schema: Feature.omit({ id: true }),
+						schema: Fingerprint.omit({ id: true }),
 					},
 				},
 			},
 		},
 		responses: {
 			"200": {
-				description: "Returns the updated feature",
+				description: "Returns the updated fingerprint",
 				content: {
 					"application/json": {
 						schema: z.object({
 							success: z.boolean(),
-							feature: Feature,
+							fingerprint: Fingerprint,
 						}),
 					},
 				},
 			},
 			"404": {
-				description: "Feature not found",
+				description: "Fingerprint not found",
 				content: {
 					"application/json": {
 						schema: z.object({
@@ -49,24 +48,21 @@ export class FeatureUpdate extends OpenAPIRoute {
 	async handle(c: AppContext) {
 		const data = await this.getValidatedData<typeof this.schema>();
 		const { id } = data.params;
-		const { feature, song_id } = data.body;
+		const { hash, offset, song_id } = data.body;
 
-		const result: any = await c.env.DB.prepare(
-			"UPDATE features SET feature = ?, song_id = ? WHERE id = ? RETURNING *"
+		const result = await c.env.DB.prepare(
+			"UPDATE fingerprints SET hash = ?, offset = ?, song_id = ? WHERE id = ? RETURNING *"
 		)
-			.bind(hexToBytes(feature), song_id, id)
+			.bind(hash, offset, song_id, id)
 			.first();
 
 		if (!result) {
-			return c.json({ success: false, error: "Feature not found" }, 404);
+			return c.json({ success: false, error: "Fingerprint not found" }, 404);
 		}
 
 		return c.json({
 			success: true,
-			feature: {
-				...result,
-				feature: bytesToHex(new Uint8Array(result.feature as ArrayBuffer)),
-			},
+			fingerprint: result,
 		});
 	}
 }

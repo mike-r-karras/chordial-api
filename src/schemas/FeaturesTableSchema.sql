@@ -1,5 +1,0 @@
-CREATE TABLE features (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    feature BLOB NOT NULL,
-    song_id INTEGER NOT NULL
-);

@@ -1,19 +1,21 @@
 import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
-import { type AppContext } from "../types";
-import { hexToBytes } from "../utils/hex";
+import { type AppContext, Song } from "../types";
 
 export class SongLookup extends OpenAPIRoute {
 	schema = {
 		tags: ["Songs"],
-		summary: "Lookup songs by features",
+		summary: "Lookup songs by fingerprints",
 		security: [{ APIKey: [] }],
 		request: {
 			body: {
 				content: {
 					"application/json": {
 						schema: z.object({
-							features: z.array(z.string().regex(/^[0-9a-fA-F]+$/).refine(s => s.length % 2 === 0, "Must be valid hex")),
+							fingerprints: z.array(z.object({
+								hash: z.string(),
+								offset: z.number(),
+							})),
 						}),
 					},
 				},
@@ -21,16 +23,14 @@ export class SongLookup extends OpenAPIRoute {
 		},
 		responses: {
 			"200": {
-				description: "Returns matching songs",
+				description: "Returns matching songs sorted by confidence",
 				content: {
 					"application/json": {
 						schema: z.object({
-							songs: z.array(z.object({
-								id: z.number(),
-								title: z.string(),
-								artist: z.string(),
-								album: z.string().nullable(),
-								year: z.number().nullable(),
+							success: z.boolean(),
+							results: z.array(z.object({
+								song: Song,
+								confidence: z.number(),
 							})),
 						}),
 					},
@@ -41,21 +41,60 @@ export class SongLookup extends OpenAPIRoute {
 
 	async handle(c: AppContext) {
 		const data = await this.getValidatedData<typeof this.schema>();
-		const { features } = data.body;
+		const { fingerprints } = data.body;
 
-		const placeholders = features.map(() => "?").join(", ");
+		if (fingerprints.length === 0) {
+			return c.json({ success: true, results: [] });
+		}
 
-		const stmt = c.env.DB.prepare(
-			`SELECT DISTINCT s.id, s.title, s.artist, s.album, s.year
-			 FROM songs s
-			 INNER JOIN features f ON f.song_id = s.id
-			 WHERE f.feature IN (${placeholders})`
-		);
+		// Build a query that calculates the delta (offset - query_offset)
+		// and groups by song_id and delta to find the best match.
+		// We use a temp table approach or just many unions if D1/SQLite allows.
+		// For D1, we'll build the query with a lot of UNION ALL for the input fingerprints.
+		
+		const queryFingerprints = fingerprints.map(() => "SELECT ? AS q_hash, ? AS q_offset").join(" UNION ALL ");
+		
+		const sql = `
+			WITH query_data AS (
+				${queryFingerprints}
+			),
+			matches AS (
+				SELECT 
+					f.song_id, 
+					(f.offset - q.q_offset) as delta,
+					COUNT(*) as match_count
+				FROM fingerprints f
+				JOIN query_data q ON f.hash = q.q_hash
+				GROUP BY f.song_id, delta
+			),
+			best_matches AS (
+				SELECT song_id, MAX(match_count) as confidence
+				FROM matches
+				GROUP BY song_id
+			)
+			SELECT s.*, b.confidence
+			FROM songs s
+			JOIN best_matches b ON s.id = b.song_id
+			ORDER BY b.confidence DESC
+			LIMIT 10
+		`;
 
-		const bindings = features.map((f) => hexToBytes(f));
+		const bindings: any[] = [];
+		fingerprints.forEach(f => {
+			bindings.push(f.hash, f.offset);
+		});
 
-		const { results } = await stmt.bind(...bindings).run();
+		const { results } = await c.env.DB.prepare(sql).bind(...bindings).all();
 
-		return c.json({ songs: results });
+		return c.json({
+			success: true,
+			results: results.map((r: any) => {
+				const { confidence, ...song } = r;
+				return {
+					song: song,
+					confidence: confidence,
+				};
+			}),
+		});
 	}
 }

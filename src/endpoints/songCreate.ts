@@ -11,7 +11,7 @@ export class SongCreate extends OpenAPIRoute {
 			body: {
 				content: {
 					"application/json": {
-						schema: Song.omit({ id: true, created_at: true }),
+						schema: Song.omit({ id: true }),
 					},
 				},
 			},
@@ -33,12 +33,12 @@ export class SongCreate extends OpenAPIRoute {
 
 	async handle(c: AppContext) {
 		const data = await this.getValidatedData<typeof this.schema>();
-		const { title, artist, album, year } = data.body;
+		const { name, artist, album, year, file_path, duration, sample_rate } = data.body;
 
 		const result = await c.env.DB.prepare(
-			"INSERT INTO songs (title, artist, album, year) VALUES (?, ?, ?, ?) RETURNING *"
+			"INSERT INTO songs (name, artist, album, year, file_path, duration, sample_rate) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *"
 		)
-			.bind(title, artist, album, year)
+			.bind(name, artist, album, year, file_path, duration, sample_rate)
 			.first();
 
 		return c.json({

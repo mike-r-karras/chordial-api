@@ -2,10 +2,10 @@ import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
 import { type AppContext } from "../types";
 
-export class FeatureDelete extends OpenAPIRoute {
+export class FingerprintDelete extends OpenAPIRoute {
 	schema = {
-		tags: ["Features"],
-		summary: "Delete a feature",
+		tags: ["Fingerprints"],
+		summary: "Delete a fingerprint",
 		security: [{ AdminKey: [] }],
 		request: {
 			params: z.object({
@@ -30,7 +30,7 @@ export class FeatureDelete extends OpenAPIRoute {
 		const data = await this.getValidatedData<typeof this.schema>();
 		const { id } = data.params;
 
-		await c.env.DB.prepare("DELETE FROM features WHERE id = ?").bind(id).run();
+		await c.env.DB.prepare("DELETE FROM fingerprints WHERE id = ?").bind(id).run();
 
 		return c.json({
 			success: true,

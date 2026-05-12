@@ -14,7 +14,7 @@ export class SongUpdate extends OpenAPIRoute {
 			body: {
 				content: {
 					"application/json": {
-						schema: Song.omit({ id: true, created_at: true }),
+						schema: Song.omit({ id: true }),
 					},
 				},
 			},
@@ -48,12 +48,12 @@ export class SongUpdate extends OpenAPIRoute {
 	async handle(c: AppContext) {
 		const data = await this.getValidatedData<typeof this.schema>();
 		const { id } = data.params;
-		const { title, artist, album, year } = data.body;
+		const { name, artist, album, year, file_path, duration, sample_rate } = data.body;
 
 		const result = await c.env.DB.prepare(
-			"UPDATE songs SET title = ?, artist = ?, album = ?, year = ? WHERE id = ? RETURNING *"
+			"UPDATE songs SET name = ?, artist = ?, album = ?, year = ?, file_path = ?, duration = ?, sample_rate = ? WHERE id = ? RETURNING *"
 		)
-			.bind(title, artist, album, year, id)
+			.bind(name, artist, album, year, file_path, duration, sample_rate, id)
 			.first();
 
 		if (!result) {

@@ -43,7 +43,7 @@ export class SongFetch extends OpenAPIRoute {
 		const { id } = data.params;
 
 		const song = await c.env.DB.prepare(
-			"SELECT id, title, artist, album, year, created_at FROM songs WHERE id = ?"
+			"SELECT id, name, artist, album, year, file_path, duration, sample_rate FROM songs WHERE id = ?"
 		)
 			.bind(id)
 			.first();

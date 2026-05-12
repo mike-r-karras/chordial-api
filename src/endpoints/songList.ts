@@ -24,7 +24,7 @@ export class SongList extends OpenAPIRoute {
 
 	async handle(c: AppContext) {
 		const { results } = await c.env.DB.prepare(
-			"SELECT id, title, artist, album, year, created_at FROM songs"
+			"SELECT id, name, artist, album, year, file_path, duration, sample_rate FROM songs"
 		).all();
 
 		return c.json({

@@ -1,12 +1,11 @@
 import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
-import { type AppContext, Feature } from "../types";
-import { bytesToHex } from "../utils/hex";
+import { type AppContext, Fingerprint } from "../types";
 
-export class FeatureFetch extends OpenAPIRoute {
+export class FingerprintFetch extends OpenAPIRoute {
 	schema = {
-		tags: ["Features"],
-		summary: "Get a feature by ID",
+		tags: ["Fingerprints"],
+		summary: "Get a fingerprint by ID",
 		security: [{ APIKey: [] }],
 		request: {
 			params: z.object({
@@ -15,18 +14,18 @@ export class FeatureFetch extends OpenAPIRoute {
 		},
 		responses: {
 			"200": {
-				description: "Returns the feature",
+				description: "Returns the fingerprint",
 				content: {
 					"application/json": {
 						schema: z.object({
 							success: z.boolean(),
-							feature: Feature,
+							fingerprint: Fingerprint,
 						}),
 					},
 				},
 			},
 			"404": {
-				description: "Feature not found",
+				description: "Fingerprint not found",
 				content: {
 					"application/json": {
 						schema: z.object({
@@ -43,22 +42,19 @@ export class FeatureFetch extends OpenAPIRoute {
 		const data = await this.getValidatedData<typeof this.schema>();
 		const { id } = data.params;
 
-		const result: any = await c.env.DB.prepare(
-			"SELECT id, feature, song_id FROM features WHERE id = ?"
+		const result = await c.env.DB.prepare(
+			"SELECT id, hash, offset, song_id FROM fingerprints WHERE id = ?"
 		)
 			.bind(id)
 			.first();
 
 		if (!result) {
-			return c.json({ success: false, error: "Feature not found" }, 404);
+			return c.json({ success: false, error: "Fingerprint not found" }, 404);
 		}
 
 		return c.json({
 			success: true,
-			feature: {
-				...result,
-				feature: bytesToHex(new Uint8Array(result.feature as ArrayBuffer)),
-			},
+			fingerprint: result,
 		});
 	}
 }

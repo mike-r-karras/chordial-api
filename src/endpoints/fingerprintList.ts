@@ -1,12 +1,11 @@
 import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
-import { type AppContext, Feature } from "../types";
-import { bytesToHex } from "../utils/hex";
+import { type AppContext, Fingerprint } from "../types";
 
-export class FeatureList extends OpenAPIRoute {
+export class FingerprintList extends OpenAPIRoute {
 	schema = {
-		tags: ["Features"],
-		summary: "List features",
+		tags: ["Fingerprints"],
+		summary: "List fingerprints",
 		security: [{ APIKey: [] }],
 		request: {
 			query: z.object({
@@ -15,12 +14,12 @@ export class FeatureList extends OpenAPIRoute {
 		},
 		responses: {
 			"200": {
-				description: "Returns an array of features",
+				description: "Returns an array of fingerprints",
 				content: {
 					"application/json": {
 						schema: z.object({
 							success: z.boolean(),
-							features: z.array(Feature),
+							fingerprints: z.array(Fingerprint),
 						}),
 					},
 				},
@@ -32,7 +31,7 @@ export class FeatureList extends OpenAPIRoute {
 		const data = await this.getValidatedData<typeof this.schema>();
 		const { song_id } = data.query;
 
-		let query = "SELECT id, feature, song_id FROM features";
+		let query = "SELECT id, hash, offset, song_id FROM fingerprints";
 		let stmt;
 
 		if (song_id) {
@@ -46,10 +45,7 @@ export class FeatureList extends OpenAPIRoute {
 
 		return c.json({
 			success: true,
-			features: results.map((r: any) => ({
-				...r,
-				feature: bytesToHex(new Uint8Array(r.feature)),
-			})),
+			fingerprints: results,
 		});
 	}
 }
