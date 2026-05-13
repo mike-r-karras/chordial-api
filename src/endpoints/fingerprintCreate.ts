@@ -11,19 +11,24 @@ export class FingerprintCreate extends OpenAPIRoute {
 			body: {
 				content: {
 					"application/json": {
-						schema: Fingerprint.omit({ id: true }),
+						schema: z.union([
+							Fingerprint.omit({ id: true }),
+							z.array(Fingerprint.omit({ id: true })),
+						]),
 					},
 				},
 			},
 		},
 		responses: {
 			"201": {
-				description: "Returns the created fingerprint",
+				description: "Returns the created fingerprint(s)",
 				content: {
 					"application/json": {
 						schema: z.object({
 							success: z.boolean(),
-							fingerprint: Fingerprint,
+							fingerprint: Fingerprint.optional(),
+							fingerprints: z.array(Fingerprint).optional(),
+							count: z.number().optional(),
 						}),
 					},
 				},
@@ -33,21 +38,48 @@ export class FingerprintCreate extends OpenAPIRoute {
 
 	async handle(c: AppContext) {
 		const data = await this.getValidatedData<typeof this.schema>();
-		const { hash, offset, song_id } = data.body;
+		const body = data.body;
 
-		const result = await c.env.DB.prepare(
-			"INSERT INTO fingerprints (hash, offset, song_id) VALUES (?, ?, ?) RETURNING *"
-		)
-			.bind(hash, offset, song_id)
-			.first();
+		const isArray = Array.isArray(body);
+		const fingerprints = isArray ? body : [body];
 
-		if (!result) {
-			return c.json({ success: false, error: "Failed to create fingerprint" }, 500);
+		if (fingerprints.length === 0) {
+			return c.json(
+				{
+					success: true,
+					count: 0,
+					fingerprints: [],
+				},
+				201
+			);
 		}
 
-		return c.json({
-			success: true,
-			fingerprint: result,
-		}, 201);
+		const placeholders = fingerprints.map(() => "(?, ?, ?)").join(", ");
+		const values = fingerprints.flatMap((f) => [f.hash, f.offset, f.song_id]);
+
+		const result = await c.env.DB.prepare(
+			`INSERT OR IGNORE INTO fingerprints (hash, offset, song_id) VALUES ${placeholders} RETURNING *`
+		)
+			.bind(...values)
+			.all();
+
+		if (isArray) {
+			return c.json(
+				{
+					success: true,
+					count: result.results.length,
+					fingerprints: result.results,
+				},
+				201
+			);
+		}
+
+		return c.json(
+			{
+				success: true,
+				fingerprint: result.results[0] || null,
+			},
+			201
+		);
 	}
 }
