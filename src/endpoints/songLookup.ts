@@ -47,54 +47,88 @@ export class SongLookup extends OpenAPIRoute {
 			return c.json({ success: true, results: [] });
 		}
 
-		// Build a query that calculates the delta (offset - query_offset)
-		// and groups by song_id and delta to find the best match.
-		// We use a temp table approach or just many unions if D1/SQLite allows.
-		// For D1, we'll build the query with a lot of UNION ALL for the input fingerprints.
-		
-		const queryFingerprints = fingerprints.map(() => "SELECT ? AS q_hash, ? AS q_offset").join(" UNION ALL ");
-		
-		const sql = `
-			WITH query_data AS (
-				${queryFingerprints}
-			),
-			matches AS (
-				SELECT 
-					f.song_id, 
-					(f.offset - q.q_offset) as delta,
-					COUNT(*) as match_count
-				FROM fingerprints f
-				JOIN query_data q ON f.hash = q.q_hash
-				GROUP BY f.song_id, delta
-			),
-			best_matches AS (
-				SELECT song_id, MAX(match_count) as confidence
-				FROM matches
-				GROUP BY song_id
-			)
-			SELECT s.*, b.confidence
-			FROM songs s
-			JOIN best_matches b ON s.id = b.song_id
-			ORDER BY b.confidence DESC
-			LIMIT 10
-		`;
+		// Map hashes to their input offsets for later delta calculation
+		const inputMap = new Map<string, number[]>();
+		for (const f of fingerprints) {
+			if (!inputMap.has(f.hash)) {
+				inputMap.set(f.hash, []);
+			}
+			inputMap.get(f.hash)!.push(f.offset);
+		}
 
-		const bindings: any[] = [];
-		fingerprints.forEach(f => {
-			bindings.push(f.hash, f.offset);
-		});
+		const uniqueHashes = Array.from(inputMap.keys());
+		const CHUNK_SIZE = 100; // D1 limit for parameters
+		const statements = [];
 
-		const { results } = await c.env.DB.prepare(sql).bind(...bindings).all();
+		for (let i = 0; i < uniqueHashes.length; i += CHUNK_SIZE) {
+			const chunk = uniqueHashes.slice(i, i + CHUNK_SIZE);
+			const placeholders = chunk.map(() => "?").join(", ");
+			statements.push(
+				c.env.DB.prepare(
+					`SELECT song_id, hash, offset FROM fingerprints WHERE hash IN (${placeholders})`
+				).bind(...chunk)
+			);
+		}
+
+		const batchResults = await c.env.DB.batch(statements);
+		const dbMatches = batchResults.flatMap((r) => r.results as unknown as { song_id: number; hash: string; offset: number }[]);
+
+		// confidenceMap: song_id -> delta -> count
+		const confidenceMap = new Map<number, Map<number, number>>();
+
+		for (const match of dbMatches) {
+			const queryOffsets = inputMap.get(match.hash);
+			if (!queryOffsets) continue;
+
+			if (!confidenceMap.has(match.song_id)) {
+				confidenceMap.set(match.song_id, new Map());
+			}
+			const songDeltas = confidenceMap.get(match.song_id)!;
+
+			for (const qOffset of queryOffsets) {
+				const delta = match.offset - qOffset;
+				songDeltas.set(delta, (songDeltas.get(delta) || 0) + 1);
+			}
+		}
+
+		// Get the best confidence (max cluster size) for each song
+		const songResults: { song_id: number; confidence: number }[] = [];
+		for (const [songId, deltas] of confidenceMap.entries()) {
+			let maxConfidence = 0;
+			for (const count of deltas.values()) {
+				if (count > maxConfidence) {
+					maxConfidence = count;
+				}
+			}
+			songResults.push({ song_id: songId, confidence: maxConfidence });
+		}
+
+		// Sort and take top 10
+		songResults.sort((a, b) => b.confidence - a.confidence);
+		const topMatches = songResults.slice(0, 10);
+
+		if (topMatches.length === 0) {
+			return c.json({ success: true, results: [] });
+		}
+
+		// Fetch song details for the top matches
+		const songIds = topMatches.map((m) => m.song_id);
+		const { results: songs } = await c.env.DB.prepare(
+			`SELECT * FROM songs WHERE id IN (${songIds.map(() => "?").join(", ")})`
+		)
+			.bind(...songIds)
+			.all();
+
+		const songMap = new Map(songs.map((s: any) => [s.id, s]));
 
 		return c.json({
 			success: true,
-			results: results.map((r: any) => {
-				const { confidence, ...song } = r;
-				return {
-					song: song,
-					confidence: confidence,
-				};
-			}),
+			results: topMatches
+				.map((m) => ({
+					song: songMap.get(m.song_id),
+					confidence: m.confidence,
+				}))
+				.filter((r) => r.song !== undefined),
 		});
 	}
 }

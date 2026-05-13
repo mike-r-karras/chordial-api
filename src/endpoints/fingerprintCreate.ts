@@ -54,21 +54,32 @@ export class FingerprintCreate extends OpenAPIRoute {
 			);
 		}
 
-		const placeholders = fingerprints.map(() => "(?, ?, ?)").join(", ");
-		const values = fingerprints.flatMap((f) => [f.hash, f.offset, f.song_id]);
+		// D1 limit is 100 parameters. Each fingerprint has 3 parameters (hash, offset, song_id).
+		// 100 / 3 = 33.33, so max 33 fingerprints per statement.
+		const CHUNK_SIZE = 33;
+		const statements = [];
 
-		const result = await c.env.DB.prepare(
-			`INSERT OR IGNORE INTO fingerprints (hash, offset, song_id) VALUES ${placeholders} RETURNING *`
-		)
-			.bind(...values)
-			.all();
+		for (let i = 0; i < fingerprints.length; i += CHUNK_SIZE) {
+			const chunk = fingerprints.slice(i, i + CHUNK_SIZE);
+			const placeholders = chunk.map(() => "(?, ?, ?)").join(", ");
+			const values = chunk.flatMap((f) => [f.hash, f.offset, f.song_id]);
+
+			statements.push(
+				c.env.DB.prepare(
+					`INSERT OR IGNORE INTO fingerprints (hash, offset, song_id) VALUES ${placeholders} RETURNING *`
+				).bind(...values)
+			);
+		}
+
+		const batchResults = await c.env.DB.batch(statements);
+		const allInserted = batchResults.flatMap((r) => r.results);
 
 		if (isArray) {
 			return c.json(
 				{
 					success: true,
-					count: result.results.length,
-					fingerprints: result.results,
+					count: allInserted.length,
+					fingerprints: allInserted,
 				},
 				201
 			);
@@ -77,7 +88,7 @@ export class FingerprintCreate extends OpenAPIRoute {
 		return c.json(
 			{
 				success: true,
-				fingerprint: result.results[0] || null,
+				fingerprint: allInserted[0] || null,
 			},
 			201
 		);
