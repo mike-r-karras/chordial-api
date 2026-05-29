@@ -102,7 +102,7 @@ class FingerprintDatabase:
     def match(self, samples, sample_rate=SAMPLE_RATE):
         """
         Recognize a (possibly noisy) audio clip.
-        Returns the best-matching song and confidence score.
+        Returns the best-matching song, confidence score, and total matching hashes.
         """
         query_hashes = fingerprint_audio(samples, sample_rate)
 
@@ -116,10 +116,11 @@ class FingerprintDatabase:
                     offset_counter[(song_id, delta)] += 1
 
         if not offset_counter:
-            return None, 0
+            return None, 0, 0
 
         (best_song_id, best_offset), count = offset_counter.most_common(1)[0]
-        return self.songs[best_song_id], count
+        total_matches = sum(c for (sid, delta), c in offset_counter.items() if sid == best_song_id)
+        return self.songs[best_song_id], count, total_matches
 
 
 # Example usage
@@ -141,5 +142,5 @@ if __name__ == "__main__":
 
     # Match a query clip (e.g., a 10-second noisy snippet)
     query, rate = load_wav("query.wav")
-    name, score = db.match(query, rate)
-    print(f"Best match: {name} (confidence: {score})")
+    name, score, total = db.match(query, rate)
+    print(f"Best match: {name} (confidence: {score}, total matches: {total})")

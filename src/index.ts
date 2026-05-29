@@ -1,5 +1,6 @@
 import { fromHono } from "chanfana";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { bearerAuth } from "hono/bearer-auth";
 import { SongLookup } from "./endpoints/songLookup";
 import { SongCreate } from "./endpoints/songCreate";
@@ -19,6 +20,8 @@ import { TaskList } from "./endpoints/taskList";
 import { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
+
+app.use("*", cors());
 
 // Security middleware
 app.use("*", async (c, next) => {

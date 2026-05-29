@@ -31,6 +31,7 @@ export class SongLookup extends OpenAPIRoute {
 							results: z.array(z.object({
 								song: Song,
 								confidence: z.number(),
+								matches: z.number(),
 							})),
 						}),
 					},
@@ -63,10 +64,11 @@ export class SongLookup extends OpenAPIRoute {
 		for (let i = 0; i < uniqueHashes.length; i += CHUNK_SIZE) {
 			const chunk = uniqueHashes.slice(i, i + CHUNK_SIZE);
 			const placeholders = chunk.map(() => "?").join(", ");
+			const query = `SELECT song_id, hash, offset FROM fingerprints WHERE hash IN (${placeholders})`;
+			console.log("Fingerprint SELECT query:", query);
+			console.log("Hashes:", chunk);
 			statements.push(
-				c.env.DB.prepare(
-					`SELECT song_id, hash, offset FROM fingerprints WHERE hash IN (${placeholders})`
-				).bind(...chunk)
+				c.env.DB.prepare(query).bind(...chunk)
 			);
 		}
 
@@ -92,15 +94,17 @@ export class SongLookup extends OpenAPIRoute {
 		}
 
 		// Get the best confidence (max cluster size) for each song
-		const songResults: { song_id: number; confidence: number }[] = [];
+		const songResults: { song_id: number; confidence: number; matches: number }[] = [];
 		for (const [songId, deltas] of confidenceMap.entries()) {
 			let maxConfidence = 0;
+			let totalMatches = 0;
 			for (const count of deltas.values()) {
+				totalMatches += count;
 				if (count > maxConfidence) {
 					maxConfidence = count;
 				}
 			}
-			songResults.push({ song_id: songId, confidence: maxConfidence });
+			songResults.push({ song_id: songId, confidence: maxConfidence, matches: totalMatches });
 		}
 
 		// Sort and take top 10
@@ -127,6 +131,7 @@ export class SongLookup extends OpenAPIRoute {
 				.map((m) => ({
 					song: songMap.get(m.song_id),
 					confidence: m.confidence,
+					matches: m.matches,
 				}))
 				.filter((r) => r.song !== undefined),
 		});
