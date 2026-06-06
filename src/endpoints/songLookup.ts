@@ -45,7 +45,7 @@ export class SongLookup extends OpenAPIRoute {
 		const { fingerprints } = data.body;
 
 		if (fingerprints.length === 0) {
-			return c.json({ success: true, results: [] });
+			return c.json({ success: true, results: [], num_fingerprints: fingerprints.length});
 		}
 
 		// Map hashes to their input offsets for later delta calculation
@@ -112,7 +112,7 @@ export class SongLookup extends OpenAPIRoute {
 		const topMatches = songResults.slice(0, 10);
 
 		if (topMatches.length === 0) {
-			return c.json({ success: true, results: [] });
+			return c.json({ success: true, results: [], num_fingerprints: fingerprints.length });
 		}
 
 		// Fetch song details for the top matches
@@ -134,6 +134,7 @@ export class SongLookup extends OpenAPIRoute {
 					matches: m.matches,
 				}))
 				.filter((r) => r.song !== undefined),
+			num_fingerprints: fingerprints.length
 		});
 	}
 }
